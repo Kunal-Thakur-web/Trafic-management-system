@@ -2,7 +2,7 @@ import pandas as pd
 import numpy as np
 
 from sklearn.model_selection import train_test_split
-from sklearn.ensemble import RandomForestRegressor
+from sklearn.tree import DecisionTreeRegressor
 from sklearn.metrics import mean_absolute_error, root_mean_squared_error, r2_score
 import joblib
 import os
@@ -52,19 +52,13 @@ X_train, X_test, y_train, y_test = train_test_split(
 # FIX 4: unbounded DecisionTreeRegressor memorises training data and gives flat
 #         predictions on unseen coordinate+hour combos.
 #         RandomForest with depth & leaf constraints generalises properly.
-model = RandomForestRegressor(
-    n_estimators=100,
-    max_depth=12,
-    min_samples_leaf=30,
-    random_state=42,
-    n_jobs=-1,
-)
+model = DecisionTreeRegressor(random_state=42)   
 model.fit(X_train, y_train)
 
 # ─── Evaluate ─────────────────────────────────────────────────────────────────
 preds = model.predict(X_test)
 print(f"MAE : {mean_absolute_error(y_test, preds):.1f} vehicles")
-print(f"RMSE: {root_mean_squared_error(y_test, preds, squared=False):.1f} vehicles")
+print(f"RMSE: {root_mean_squared_error(y_test, preds):.1f} vehicles")
 print(f"R²  : {r2_score(y_test, preds):.4f}")
 
 # ─── Save ─────────────────────────────────────────────────────────────────────
