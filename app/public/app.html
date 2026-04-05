@@ -88,57 +88,13 @@
     <button class="btn-clr" id="clr-btn" onclick="clearAll()">✕ Clear Route</button>
   </div>
 
-  <!-- Result -->
+  <!-- Route Comparison Results -->
   <div class="psec" id="res-sec">
-    <div class="sec-title">Route Result</div>
-    <div class="res-card">
-      <div class="res-top">
-        <span class="res-title">Shortest Path Found</span>
-        <span class="res-badge" id="r-badge">OPTIMAL</span>
-      </div>
-      <div class="res-stats">
-        <div class="rs hl">
-          <div class="v" id="r-time">--</div>
-          <div class="u">Minutes</div>
-        </div>
-        <div class="rs">
-          <div class="v" id="r-dist">--</div>
-          <div class="u">km</div>
-        </div>
-        <div class="rs">
-          <div class="v" id="r-delay">--</div>
-          <div class="u">Delay min</div>
-        </div>
-      </div>
-      <div class="res-steps">
-        <div class="step-lbl">Route Summary</div>
-        <div id="steps"></div>
-        <div class="tbar-wrap">
-          <div class="tbar-top">
-            <span>Free</span>
-            <span id="tlbl">Traffic</span>
-            <span>Heavy</span>
-          </div>
-          <div class="tbar"><div class="tptr" id="tptr" style="left:25%"></div></div>
-        </div>
-      </div>
+    <div class="sec-title-row">
+      <div class="sec-title">Route Comparison</div>
+      <div class="route-count-badge" id="route-count-badge">-- routes</div>
     </div>
-
-    <!-- Extra info row -->
-    <div class="info-row">
-      <div class="info-chip">
-        <div class="ic-val" id="r-speed">--</div>
-        <div class="ic-lbl">Avg Speed</div>
-      </div>
-      <div class="info-chip">
-        <div class="ic-val" id="r-co2">--</div>
-        <div class="ic-lbl">CO₂ (g/km)</div>
-      </div>
-      <div class="info-chip">
-        <div class="ic-val" id="r-eta">--</div>
-        <div class="ic-lbl">ETA</div>
-      </div>
-    </div>
+    <div id="route-cards"></div>
   </div>
 
 </div>

@@ -326,3 +326,186 @@ header {
   border-radius: 50% 50% 50% 0;
   transform: rotate(-45deg);
 }
+/* ═══════════════════════════════════════════════════
+   MULTI-ROUTE COMPARISON PANEL
+   ═══════════════════════════════════════════════════ */
+
+/* Section header row */
+.sec-title-row {
+  display: flex; align-items: center; justify-content: space-between;
+  margin-bottom: 12px;
+}
+.sec-title-row .sec-title { margin-bottom: 0; }
+
+.route-count-badge {
+  font-family: 'DM Mono', monospace; font-size: 9px;
+  letter-spacing: 1px; text-transform: uppercase;
+  color: var(--sky);
+  background: var(--sky-lo);
+  border: 1px solid rgba(59,130,246,.25);
+  border-radius: 20px; padding: 3px 9px;
+}
+
+/* ── Route card ─────────────────────────────────── */
+.rcard {
+  background: var(--ink-2);
+  border: 1.5px solid var(--border);
+  border-radius: 11px;
+  margin-bottom: 10px;
+  overflow: hidden;
+  cursor: pointer;
+  transition: border-color .2s, box-shadow .2s, transform .12s;
+  position: relative;
+}
+.rcard:last-child { margin-bottom: 0; }
+.rcard:hover {
+  border-color: var(--border-hi);
+  box-shadow: 0 4px 20px rgba(0,0,0,.35);
+  transform: translateY(-1px);
+}
+.rcard.active {
+  border-color: var(--rc-color, var(--sky));
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--rc-color, var(--sky)) 20%, transparent);
+}
+
+/* Colour accent bar on left edge */
+.rcard::before {
+  content: '';
+  position: absolute; top: 0; left: 0; bottom: 0;
+  width: 3px;
+  background: var(--rc-color, var(--sky));
+  border-radius: 11px 0 0 11px;
+}
+
+/* ── Card header ─── */
+.rcard-head {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 10px 13px 8px 16px;
+  border-bottom: 1px solid var(--border);
+  background: linear-gradient(130deg,
+    color-mix(in srgb, var(--rc-color, var(--sky)) 12%, transparent),
+    transparent 70%);
+}
+.rcard-label-row { display: flex; align-items: center; gap: 8px; }
+.rcard-dot {
+  width: 9px; height: 9px; border-radius: 50%;
+  background: var(--rc-color, var(--sky));
+  box-shadow: 0 0 7px var(--rc-color, var(--sky));
+  flex-shrink: 0;
+}
+.rcard-label {
+  font-family: 'Syne', sans-serif; font-weight: 700; font-size: 12px;
+  color: var(--rc-color, var(--sky));
+}
+.rcard-badge {
+  font-family: 'DM Mono', monospace; font-size: 9px; letter-spacing: 1px;
+  padding: 3px 8px; border-radius: 4px;
+  border: 1px solid transparent;
+  white-space: nowrap;
+}
+
+/* ── Stats grid ─── */
+.rcard-stats {
+  display: grid; grid-template-columns: repeat(4, 1fr);
+  border-bottom: 1px solid var(--border);
+}
+.rcs {
+  padding: 9px 6px;
+  display: flex; flex-direction: column; align-items: center; gap: 2px;
+  border-right: 1px solid var(--border); text-align: center;
+}
+.rcs:last-child { border-right: none; }
+.rcs .v {
+  font-family: 'Syne', sans-serif; font-weight: 800; font-size: 17px;
+  line-height: 1; color: var(--text);
+}
+.rcs.accent .v { color: var(--rc-color, var(--sky)); }
+.rcs .u {
+  font-family: 'DM Mono', monospace; font-size: 8px;
+  color: var(--muted); text-transform: uppercase; letter-spacing: .8px;
+}
+
+/* ── Congestion bar ─── */
+.rcard-cbar-wrap { padding: 9px 13px 9px 16px; border-bottom: 1px solid var(--border); }
+.rcard-cbar-top {
+  display: flex; justify-content: space-between; align-items: center;
+  margin-bottom: 5px;
+}
+.rcard-cbar-lbl {
+  font-family: 'DM Mono', monospace; font-size: 9px;
+  letter-spacing: 1.2px; text-transform: uppercase; color: var(--muted);
+}
+.rcard-cbar-val {
+  font-family: 'Syne', sans-serif; font-weight: 700; font-size: 12px;
+}
+.rcard-cbar {
+  height: 5px; border-radius: 3px;
+  background: linear-gradient(90deg, var(--emerald) 0%, var(--amber) 55%, var(--rose) 100%);
+  position: relative;
+}
+.rcard-cptr {
+  position: absolute; top: -4px;
+  width: 11px; height: 11px; border-radius: 50%;
+  background: #fff; border: 2px solid var(--rc-color, var(--sky));
+  transform: translateX(-50%);
+  box-shadow: 0 0 6px var(--rc-color, var(--sky));
+}
+
+/* ── Extra chips row ─── */
+.rcard-chips {
+  display: flex; gap: 0;
+}
+.rcard-chip {
+  flex: 1;
+  padding: 7px 8px;
+  display: flex; flex-direction: column; gap: 2px; align-items: center;
+  border-right: 1px solid var(--border);
+}
+.rcard-chip:last-child { border-right: none; }
+.rcard-chip .ic-val {
+  font-family: 'Syne', sans-serif; font-weight: 700; font-size: 12px;
+  color: var(--text);
+}
+.rcard-chip .ic-lbl {
+  font-family: 'DM Mono', monospace; font-size: 8px;
+  letter-spacing: .8px; color: var(--muted); text-transform: uppercase;
+}
+
+/* ── Expandable roads list ─── */
+.rcard-roads {
+  padding: 0 13px 0 16px;
+  max-height: 0; overflow: hidden;
+  transition: max-height .3s ease, padding .3s ease;
+}
+.rcard.open .rcard-roads {
+  max-height: 200px; padding: 8px 13px 10px 16px;
+}
+.rcard-toggle {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 7px 13px 7px 16px;
+  cursor: pointer;
+  font-family: 'DM Mono', monospace; font-size: 9px;
+  letter-spacing: 1.2px; text-transform: uppercase; color: var(--muted);
+  border-top: 1px solid var(--border);
+  user-select: none;
+  transition: color .15s;
+}
+.rcard-toggle:hover { color: var(--text); }
+.rcard-toggle-arrow {
+  transition: transform .25s;
+  font-size: 10px;
+}
+.rcard.open .rcard-toggle-arrow { transform: rotate(180deg); }
+
+.road-step {
+  display: flex; align-items: flex-start; gap: 8px;
+  padding: 4px 0; border-bottom: 1px solid rgba(255,255,255,.04);
+  font-size: 11px; color: var(--muted);
+}
+.road-step:last-child { border-bottom: none; }
+.road-sdot {
+  width: 5px; height: 5px; border-radius: 50%;
+  background: var(--dim); flex-shrink: 0; margin-top: 5px;
+}
+.road-sdot.o { background: var(--emerald); }
+.road-sdot.d { background: var(--rose); }

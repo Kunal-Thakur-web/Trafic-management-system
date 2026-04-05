@@ -394,89 +394,234 @@ function pickRoads(o, d) {
 }
 
 // ═══════════════════════════════════════════════════
+//  ROUTE COLOURS  (one per candidate route)
+// ═══════════════════════════════════════════════════
+const ROUTE_COLORS = [
+  { color: '#3b82f6', glow: 'rgba(59,130,246,0.22)',  label: 'Route A', rankLabel: '★ Best Route'  },
+  { color: '#f59e0b', glow: 'rgba(245,158,11,0.18)',  label: 'Route B', rankLabel: 'Alternative 1' },
+  { color: '#f43f5e', glow: 'rgba(244,63,94,0.18)',   label: 'Route C', rankLabel: 'Alternative 2' },
+];
+
+// ═══════════════════════════════════════════════════
+//  MAP LAYER STATE
+// ═══════════════════════════════════════════════════
+routePolyline = null;
+let allRouteLayers = [];   // { glow, line } pairs for every drawn route
+let activeRouteIdx = 0;    // which route card / polyline is "selected"
+
+// ═══════════════════════════════════════════════════
 //  ROUTE DRAWING
 // ═══════════════════════════════════════════════════
-function drawRoute(pathPoints) {
-  if (routePolyline) { routePolyline.remove(); routePolyline = null; }
 
-  // Glow layer (thicker, more transparent)
-  L.polyline(pathPoints, {
-    color: 'rgba(59,130,246,0.25)',
-    weight: 12,
-    lineCap: 'round',
-    lineJoin: 'round',
-  }).addTo(map);
+/** Draw all ranked routes on the map. Index 0 = best = highlighted. */
+function drawAllRoutes(ranked) {
+  // Remove all previous route polylines
+  removeAllRouteLayers();
 
-  // Main line
-  routePolyline = L.polyline(pathPoints, {
-    color: '#3b82f6',
-    weight: 4,
-    lineCap: 'round',
-    lineJoin: 'round',
-    dashArray: null,
-  }).addTo(map);
+  // Draw from worst → best so best sits on top
+  const reversed = [...ranked].reverse();
+  reversed.forEach(r => {
+    const ri   = r.rank - 1;  // 0-based index into ROUTE_COLORS
+    const col  = ROUTE_COLORS[ri] || ROUTE_COLORS[ROUTE_COLORS.length - 1];
+    const pts  = r.coordinates.map(([lon, lat]) => [lat, lon]);
+    const isActive = ri === 0;
 
-  map.fitBounds(routePolyline.getBounds(), { paddingTopLeft: [400, 60], paddingBottomRight: [40, 40] });
+    const glowLayer = L.polyline(pts, {
+      color:   col.glow,
+      weight:  isActive ? 14 : 8,
+      lineCap: 'round', lineJoin: 'round',
+      interactive: false,
+    }).addTo(map);
+
+    const lineLayer = L.polyline(pts, {
+      color:     col.color,
+      weight:    isActive ? 5 : 3,
+      opacity:   isActive ? 1 : 0.55,
+      dashArray: isActive ? null : '8,6',
+      lineCap:   'round', lineJoin: 'round',
+    }).addTo(map);
+
+    lineLayer.bindTooltip(
+      `${col.label} · ${r.roadKm} km · ${r.travelMin} min · ${r.trafficPct}% congestion`,
+      { sticky: true }
+    );
+    lineLayer.on('click', () => selectRoute(ri, ranked));
+
+    allRouteLayers.push({ glow: glowLayer, line: lineLayer, rank: ri });
+  });
+
+  // Fit bounds to the best route
+  const best = ranked[0];
+  const bestPts = best.coordinates.map(([lon, lat]) => [lat, lon]);
+  const bounds  = L.polyline(bestPts).getBounds();
+  map.fitBounds(bounds, { paddingTopLeft: [400, 60], paddingBottomRight: [40, 40] });
 }
 
-function removeRouteLayer() {
-  if (routePolyline) {
-    // Remove glow layer too (it's the layer just before routePolyline)
-    map.eachLayer(l => {
-      if (l instanceof L.Polyline) l.remove();
+/** Visually highlight route at index `idx`, dim others. Also activates card. */
+function selectRoute(idx, ranked) {
+  activeRouteIdx = idx;
+
+  allRouteLayers.forEach(({ glow, line, rank }) => {
+    const isActive = rank === idx;
+    const col = ROUTE_COLORS[rank] || ROUTE_COLORS[ROUTE_COLORS.length - 1];
+    glow.setStyle({ weight: isActive ? 14 : 8, color: isActive ? col.glow : 'rgba(100,116,139,0.12)' });
+    line.setStyle({
+      weight:    isActive ? 5 : 3,
+      opacity:   isActive ? 1 : 0.35,
+      dashArray: isActive ? null : '8,6',
     });
-    routePolyline = null;
-  }
+    if (isActive) line.bringToFront();
+  });
+
+  // Sync panel card active state
+  document.querySelectorAll('.rcard').forEach((el, i) => {
+    el.classList.toggle('active', i === idx);
+  });
 }
 
-// ═══════════════════════════════════════════════════
-//  RESULT DISPLAY
-// ═══════════════════════════════════════════════════
-function showResult(stats) {
-  document.getElementById('r-time').textContent  = stats.travelMin;
-  document.getElementById('r-dist').textContent  = stats.roadKm;
-  document.getElementById('r-delay').textContent = stats.delay;
-  document.getElementById('r-speed').textContent = stats.avgSpeed + ' km/h';
-  document.getElementById('r-co2').textContent   = stats.co2;
-  document.getElementById('r-eta').textContent   = stats.eta;
+function removeAllRouteLayers() {
+  allRouteLayers.forEach(({ glow, line }) => {
+    try { glow.remove(); } catch {}
+    try { line.remove(); } catch {}
+  });
+  allRouteLayers = [];
+  routePolyline  = null;
+}
 
-  // Traffic pointer
-  const pct = Math.min(Math.max(stats.trafficPct, 0), 100);
-  document.getElementById('tptr').style.left = pct + '%';
-  document.getElementById('tlbl').textContent =
-    pct < 30 ? 'Light' : pct < 60 ? 'Moderate' : 'Heavy';
+// kept for compat with clearAll
+function removeRouteLayer()  { removeAllRouteLayers(); }
+function removeAltLayers()   { /* no-op: merged into removeAllRouteLayers */ }
 
-  // Badge
-  const badge = document.getElementById('r-badge');
-  if (pct < 30) {
-    badge.textContent = 'OPTIMAL'; badge.style.color = 'var(--emerald)';
-  } else if (pct < 60) {
-    badge.textContent = 'MODERATE'; badge.style.color = 'var(--amber)';
-    badge.style.background = 'rgba(245,158,11,.1)';
-    badge.style.borderColor = 'rgba(245,158,11,.25)';
-  } else {
-    badge.textContent = 'CONGESTED'; badge.style.color = 'var(--rose)';
-    badge.style.background = 'rgba(244,63,94,.1)';
-    badge.style.borderColor = 'rgba(244,63,94,.25)';
+// ═══════════════════════════════════════════════════
+//  RESULT DISPLAY — multi-route cards
+// ═══════════════════════════════════════════════════
+
+function congestionColor(pct) {
+  if (pct < 30) return 'var(--emerald)';
+  if (pct < 60) return 'var(--amber)';
+  return 'var(--rose)';
+}
+function congestionLabel(pct) {
+  if (pct < 30) return 'FREE FLOW';
+  if (pct < 60) return 'MODERATE';
+  return 'CONGESTED';
+}
+function congestionBg(pct) {
+  if (pct < 30) return 'rgba(16,185,129,.08)';
+  if (pct < 60) return 'rgba(245,158,11,.08)';
+  return 'rgba(244,63,94,.08)';
+}
+function congestionBorder(pct) {
+  if (pct < 30) return 'rgba(16,185,129,.22)';
+  if (pct < 60) return 'rgba(245,158,11,.22)';
+  return 'rgba(244,63,94,.22)';
+}
+
+function buildRouteCard(r, ranked, dateStr, timeStr) {
+  const ri   = r.rank - 1;
+  const col  = ROUTE_COLORS[ri] || ROUTE_COLORS[ROUTE_COLORS.length - 1];
+  const pct  = Math.min(100, Math.max(0, r.trafficPct));
+  const cCol = congestionColor(pct);
+
+  // ETA
+  let eta = r.eta || '--';
+  if (!r.eta && dateStr && timeStr) {
+    const etaDt = new Date(`${dateStr}T${timeStr}`);
+    etaDt.setMinutes(etaDt.getMinutes() + r.travelMin);
+    eta = etaDt.toTimeString().slice(0, 5);
   }
 
-  // Steps / road list
-  const stepsEl = document.getElementById('steps');
-  stepsEl.innerHTML = `
-    <div class="step">
-      <div class="sdot o"></div>
-      <span>${oCoord.n}</span>
+  // Roads list HTML
+  const roadsHTML = (r.roads && r.roads.length)
+    ? `
+      <div class="road-step"><div class="road-sdot o"></div><span>${oCoord.n}</span></div>
+      ${r.roads.map(rd => `<div class="road-step"><div class="road-sdot"></div><span>via ${rd}</span></div>`).join('')}
+      <div class="road-step"><div class="road-sdot d"></div><span>${dCoord.n}</span></div>
+    `
+    : `<div class="road-step"><div class="road-sdot o"></div><span>${oCoord.n}</span></div>
+       <div class="road-step"><div class="road-sdot d"></div><span>${dCoord.n}</span></div>`;
+
+  return `
+<div class="rcard" style="--rc-color:${col.color}" data-idx="${ri}" onclick="selectRoute(${ri}, window._ranked)">
+  <div class="rcard-head">
+    <div class="rcard-label-row">
+      <div class="rcard-dot"></div>
+      <span class="rcard-label">${col.label} ${ri === 0 ? '· Best' : ''}</span>
     </div>
-    ${stats.roads.map(r => `
-      <div class="step">
-        <div class="sdot"></div>
-        <span>via ${r}</span>
-      </div>`).join('')}
-    <div class="step">
-      <div class="sdot d"></div>
-      <span>${dCoord.n}</span>
+    <span class="rcard-badge" style="color:${cCol};background:${congestionBg(pct)};border-color:${congestionBorder(pct)}">
+      ${congestionLabel(pct)}
+    </span>
+  </div>
+
+  <div class="rcard-stats">
+    <div class="rcs accent">
+      <div class="v">${r.travelMin}</div>
+      <div class="u">Min</div>
     </div>
-  `;
+    <div class="rcs">
+      <div class="v">${r.roadKm}</div>
+      <div class="u">km</div>
+    </div>
+    <div class="rcs">
+      <div class="v">${r.delay}</div>
+      <div class="u">Delay</div>
+    </div>
+    <div class="rcs">
+      <div class="v">${r.avgSpeed}</div>
+      <div class="u">km/h</div>
+    </div>
+  </div>
+
+  <div class="rcard-cbar-wrap">
+    <div class="rcard-cbar-top">
+      <span class="rcard-cbar-lbl">Congestion Rate</span>
+      <span class="rcard-cbar-val" style="color:${cCol}">${pct.toFixed(1)}%</span>
+    </div>
+    <div class="rcard-cbar">
+      <div class="rcard-cptr" style="left:${pct}%"></div>
+    </div>
+  </div>
+
+  <div class="rcard-chips">
+    <div class="rcard-chip">
+      <div class="ic-val">${eta}</div>
+      <div class="ic-lbl">ETA</div>
+    </div>
+    <div class="rcard-chip">
+      <div class="ic-val">${r.co2}</div>
+      <div class="ic-lbl">CO₂ g/km</div>
+    </div>
+    <div class="rcard-chip">
+      <div class="ic-val">${r.vehicles ? Math.round(r.vehicles) : '--'}</div>
+      <div class="ic-lbl">Veh/hr</div>
+    </div>
+  </div>
+
+  <div class="rcard-toggle" onclick="event.stopPropagation(); toggleCard(this)">
+    <span>Road Summary</span>
+    <span class="rcard-toggle-arrow">▾</span>
+  </div>
+  <div class="rcard-roads">${roadsHTML}</div>
+</div>`;
+}
+
+function toggleCard(toggleEl) {
+  toggleEl.closest('.rcard').classList.toggle('open');
+}
+
+function showAllRoutes(ranked, dateStr, timeStr) {
+  // Store globally so onclick handlers can reference it
+  window._ranked = ranked;
+
+  document.getElementById('route-count-badge').textContent =
+    `${ranked.length} route${ranked.length > 1 ? 's' : ''}`;
+
+  const container = document.getElementById('route-cards');
+  container.innerHTML = ranked.map(r => buildRouteCard(r, ranked, dateStr, timeStr)).join('');
+
+  // Mark best card active
+  const cards = container.querySelectorAll('.rcard');
+  if (cards[0]) cards[0].classList.add('active');
 
   document.getElementById('res-sec').classList.add('vis');
 }
@@ -490,39 +635,33 @@ function loading(on) {
   const txt  = document.getElementById('go-txt');
   const spin = document.getElementById('go-spin');
 
-  btn.disabled     = on;
+  btn.disabled       = on;
   icon.style.display = on ? 'none' : '';
   spin.style.display = on ? 'block' : 'none';
-  txt.textContent  = on ? 'Calculating…' : 'Find Shortest Route';
+  txt.textContent    = on ? 'Calculating…' : 'Find Shortest Route';
 }
 
 // ═══════════════════════════════════════════════════
 //  CLEAR
 // ═══════════════════════════════════════════════════
 function clearAll() {
-  // Remove markers
   if (oMarker) { oMarker.remove(); oMarker = null; }
   if (dMarker) { dMarker.remove(); dMarker = null; }
 
-  // Remove route polylines
+  removeAllRouteLayers();
   map.eachLayer(l => { if (l instanceof L.Polyline) l.remove(); });
-  routePolyline = null;
 
-  // Reset state
   oCoord = null;
   dCoord = null;
+  window._ranked = null;
 
-  // Clear inputs
   document.getElementById('inp-o').value = '';
   document.getElementById('inp-d').value = '';
-
-  // Hide result + clear btn
   document.getElementById('res-sec').classList.remove('vis');
+  document.getElementById('route-cards').innerHTML = '';
   document.getElementById('clr-btn').classList.remove('vis');
 
-  // Re-center map
   map.setView([51.5074, -0.1278], 11);
-
   toast('Route cleared', 'ok');
 }
 
@@ -538,10 +677,39 @@ function toast(msg, type) {
 }
 
 // ═══════════════════════════════════════════════════
-//  MAIN ROUTE FUNCTION (mock)
+//  CONFIG
+// ═══════════════════════════════════════════════════
+const API_BASE  = 'http://localhost:5050';
+const OSRM_BASE = 'https://router.project-osrm.org/route/v1/driving';
+
+// ═══════════════════════════════════════════════════
+//  OSRM helpers
+// ═══════════════════════════════════════════════════
+async function fetchOSRMRoutes(o, d) {
+  const url = `${OSRM_BASE}/${o.lon},${o.lat};${d.lon},${d.lat}`
+            + `?overview=full&geometries=geojson&steps=true&alternatives=3`;
+  const resp = await fetch(url);
+  if (!resp.ok) throw new Error(`OSRM error ${resp.status}`);
+  const data = await resp.json();
+  if (data.code !== 'Ok' || !data.routes?.length) throw new Error('OSRM: no route found');
+  return data.routes;
+}
+
+function extractRoadNames(osrmRoute) {
+  try {
+    const names = [];
+    for (const step of osrmRoute.legs[0].steps) {
+      const n = (step.name || '').trim();
+      if (n && !names.includes(n) && !/^\d+$/.test(n)) names.push(n);
+    }
+    return names.slice(0, 6);
+  } catch { return []; }
+}
+
+// ═══════════════════════════════════════════════════
+//  MAIN ROUTE FUNCTION
 // ═══════════════════════════════════════════════════
 async function findRoute() {
-  // Resolve inputs if not already picked from suggestions
   if (!oCoord) oCoord = resolveInput('inp-o');
   if (!dCoord) dCoord = resolveInput('inp-d');
 
@@ -550,32 +718,75 @@ async function findRoute() {
   if (oCoord.n === dCoord.n) { toast('Origin and destination are the same', 'err'); return; }
 
   loading(true);
-  removeRouteLayer();
-
-  // Simulate async ML model call with a short delay
-  await new Promise(r => setTimeout(r, 900 + Math.random() * 600));
+  removeAllRouteLayers();
 
   try {
     const dateStr = document.getElementById('dt-date').value;
-    const timeStr = document.getElementById('dt-time').value;
+    const timeStr = document.getElementById('dt-time').value || '12:00';
+    const isoStr  = `${dateStr}T${timeStr}`;
 
-    const pathPoints = buildMockPath(oCoord, dCoord);
-    const stats      = mockStats(oCoord, dCoord, dateStr, timeStr);
+    // 1. Fetch real alternative routes from OSRM
+    const osrmRoutes = await fetchOSRMRoutes(oCoord, dCoord);
 
-    // Ensure pins are on map
+    // 2. Build payload for ML server — send all routes' full geometry
+    const routePayload = osrmRoutes.map((r, i) => ({
+      index:       i,
+      distance_m:  r.distance,
+      duration_s:  r.duration,
+      coordinates: r.geometry.coordinates,
+      roads:       extractRoadNames(r),
+    }));
+
+    // 3. ML server scores each route on its actual road coordinates
+    const mlResp = await fetch(`${API_BASE}/score_routes`, {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ datetime: isoStr, routes: routePayload }),
+    }).catch(() => null);
+
+    let ranked;
+
+    if (mlResp && mlResp.ok) {
+      ({ ranked } = await mlResp.json());
+    } else {
+      // ML server offline — build heuristic stats for each OSRM route
+      toast('ML server offline — heuristic traffic only', 'err');
+      const hour = parseInt(timeStr.split(':')[0]);
+      const rush = (hour >= 7 && hour <= 9) || (hour >= 17 && hour <= 19);
+      ranked = osrmRoutes.map((r, i) => {
+        const trafficPct = Math.min(100, (rush ? 55 : 15) + (i * 12) + Math.round(Math.random() * 15));
+        const avgSpeed   = Math.max(8, Math.round(45 - 37 * trafficPct / 100));
+        const roadKm     = Math.round(r.distance / 100) / 10;
+        const delay      = Math.round((r.duration / 60) * (trafficPct / 100) * 0.4);
+        const travelMin  = Math.round(r.duration / 60) + delay;
+        return {
+          rank: i + 1, osrm_index: i,
+          coordinates: r.geometry.coordinates,
+          roadKm, travelMin, delay, avgSpeed, trafficPct,
+          co2:   Math.round(110 + (trafficPct / 100) * 40),
+          roads: extractRoadNames(r),
+          vehicles: null, score: travelMin,
+        };
+      });
+      ranked.sort((a, b) => a.score - b.score);
+      ranked.forEach((r, i) => r.rank = i + 1);
+    }
+
+    // 4. Draw all routes on map, best highlighted
     placePin('o', oCoord.lat, oCoord.lon, oCoord.n);
     placePin('d', dCoord.lat, dCoord.lon, dCoord.n);
+    drawAllRoutes(ranked);
 
-    drawRoute(pathPoints);
-    showResult(stats);
+    // 5. Render all route cards in the panel
+    showAllRoutes(ranked, dateStr, timeStr);
 
     loading(false);
-    toast('Route calculated ✓', 'ok');
     document.getElementById('clr-btn').classList.add('vis');
+    toast(`${ranked.length} routes compared · Best: ${ranked[0].travelMin} min`, 'ok');
 
   } catch (err) {
-    console.error(err);
+    console.error('[findRoute]', err);
     loading(false);
-    toast('Routing failed — try again', 'err');
+    toast(`Routing failed — ${err.message}`, 'err');
   }
 }
