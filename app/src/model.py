@@ -1,54 +1,73 @@
 import pandas as pd
 import numpy as np
-import matplotlib.pyplot as plt
-import seaborn as sns
 
 from sklearn.model_selection import train_test_split
-from sklearn.linear_model import LinearRegression
-from sklearn.tree import DecisionTreeRegressor
-from sklearn.preprocessing import StandardScaler
-from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
+from sklearn.ensemble import RandomForestRegressor
+from sklearn.metrics import mean_absolute_error, root_mean_squared_error, r2_score
 import joblib
 import os
-
 import warnings
 warnings.filterwarnings('ignore')
 
-print(os.getcwd())
-
-count_points = pd.read_csv(r'D:\ML Project\Traffic Management System\Trafic-management-system\count_points.csv', low_memory=False)
-london_traffic = pd.read_csv(r'D:\ML Project\Traffic Management System\Trafic-management-system\london_traffic.csv', low_memory=False)
-
-
+# ─── Load data ────────────────────────────────────────────────────────────────
+# Update these paths to match your environment
+london_traffic = pd.read_csv(
+    r'D:\ML Project\Traffic Management System\Trafic-management-system\london_traffic.csv',
+    low_memory=False
+)
 
 df = london_traffic.rename(columns={
-    'count_point_id':    'Junction',
+    'count_point_id':     'Junction',
     'all_motor_vehicles': 'Vehicles'
 }).copy()
 
-# Drop rows with missing vehicle counts
-df = df.dropna(subset=['Vehicles'])
+# ─── Clean ────────────────────────────────────────────────────────────────────
+# FIX 1: drop rows missing either Vehicles OR hour
+df = df.dropna(subset=['Vehicles', 'hour'])
 
-time_cols = [c for c in df.columns if any(t in c.lower()
-             for t in ['year', 'month', 'day', 'hour', 'date', 'time'])]
+# ─── Feature engineering ──────────────────────────────────────────────────────
+# FIX 2: count_date is a DATE-ONLY string (e.g. "2000-03-27"), so dt.hour is
+#         always 0.  The CSV already has a proper `hour` column — use it directly.
+#         Only extract day/month/weekday/year from the date column.
+df['_date']   = pd.to_datetime(df['count_date'])
+df['day']     = df['_date'].dt.day
+df['month']   = df['_date'].dt.month
+df['weekday'] = df['_date'].dt.weekday
+df['year']    = df['_date'].dt.year
+# `hour` already exists in the CSV — no override needed
 
-df['Date'] = pd.to_datetime(df['count_date'])
+# ─── Features & target ────────────────────────────────────────────────────────
+# FIX 3: server.py calls predict_vehicles(lat, lon, hour, day, month, weekday)
+#         so the feature order here MUST match exactly what the server sends.
+FEATURES = ['latitude', 'longitude', 'hour', 'day', 'month', 'weekday']
 
-df['day']     = df['Date'].dt.day
-df['month']   = df['Date'].dt.month
-df['weekday'] = df['Date'].dt.weekday
+X = df[FEATURES]
+y = df['Vehicles']
 
-
-X_base = df[['latitude','longitude', 'hour', 'day', 'month', 'weekday']]
-Y_base = df['Vehicles']
-
-
-X_base_train, X_base_test, Y_base_train, Y_base_test = train_test_split(
-    X_base, Y_base, test_size=0.2, random_state=42, shuffle=True
+X_train, X_test, y_train, y_test = train_test_split(
+    X, y, test_size=0.2, random_state=42, shuffle=True
 )
 
-model = DecisionTreeRegressor(random_state=42)
-model.fit(X_base_train, Y_base_train)
+# ─── Model ────────────────────────────────────────────────────────────────────
+# FIX 4: unbounded DecisionTreeRegressor memorises training data and gives flat
+#         predictions on unseen coordinate+hour combos.
+#         RandomForest with depth & leaf constraints generalises properly.
+model = RandomForestRegressor(
+    n_estimators=100,
+    max_depth=12,
+    min_samples_leaf=30,
+    random_state=42,
+    n_jobs=-1,
+)
+model.fit(X_train, y_train)
 
+# ─── Evaluate ─────────────────────────────────────────────────────────────────
+preds = model.predict(X_test)
+print(f"MAE : {mean_absolute_error(y_test, preds):.1f} vehicles")
+print(f"RMSE: {root_mean_squared_error(y_test, preds, squared=False):.1f} vehicles")
+print(f"R²  : {r2_score(y_test, preds):.4f}")
+
+# ─── Save ─────────────────────────────────────────────────────────────────────
 os.makedirs('app/models', exist_ok=True)
 joblib.dump(model, 'app/models/app_model.pkl')
+print("Model saved → app/models/app_model.pkl")

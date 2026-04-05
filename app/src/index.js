@@ -296,101 +296,18 @@ function handleEnter(e) {
 }
 
 // ═══════════════════════════════════════════════════
-//  MOCK ROUTE ENGINE
-//  Generates a plausible curved polyline + random stats
+//  HAVERSINE  (used only for straight-line fallback display)
 // ═══════════════════════════════════════════════════
 
 /** Haversine distance in km */
 function haversine(a, b) {
-  const R   = 6371;
+  const R    = 6371;
   const dLat = (b.lat - a.lat) * Math.PI / 180;
   const dLon = (b.lon - a.lon) * Math.PI / 180;
-  const s   = Math.sin(dLat/2)**2
-    + Math.cos(a.lat*Math.PI/180) * Math.cos(b.lat*Math.PI/180)
-    * Math.sin(dLon/2)**2;
-  return R * 2 * Math.atan2(Math.sqrt(s), Math.sqrt(1-s));
-}
-
-/** Interpolate a slightly curved path with intermediate "waypoints" */
-function buildMockPath(o, d) {
-  const steps = 12;
-  const pts   = [];
-
-  for (let i = 0; i <= steps; i++) {
-    const t   = i / steps;
-    const lat = o.lat + (d.lat - o.lat) * t;
-    const lon = o.lon + (d.lon - o.lon) * t;
-
-    // Add organic curve: perpendicular wiggle + noise
-    const perp = { lat: -(d.lon - o.lon), lon: d.lat - o.lat };
-    const mag  = Math.sqrt(perp.lat**2 + perp.lon**2) || 1;
-    const curveAmt = Math.sin(t * Math.PI) * (0.008 + Math.random() * 0.004);
-    const noiseAmt = (Math.random() - 0.5) * 0.003;
-
-    pts.push([
-      lat + (perp.lat / mag) * curveAmt + noiseAmt,
-      lon + (perp.lon / mag) * curveAmt + noiseAmt,
-    ]);
-  }
-  return pts;
-}
-
-/** Seeded-ish random mock stats based on coords */
-function mockStats(o, d, dateStr, timeStr) {
-  const dist       = haversine(o, d);
-  const straightKm = Math.round(dist * 10) / 10;
-
-  // Road distance is ~1.3–1.6× straight line
-  const roadKm     = Math.round(straightKm * (1.3 + Math.random() * 0.3) * 10) / 10;
-
-  // Rush hour: 7-9am, 5-7pm → higher delay
-  const hour    = parseInt((timeStr || '12:00').split(':')[0]);
-  const rush    = (hour >= 7 && hour <= 9) || (hour >= 17 && hour <= 19);
-  const delay   = rush ? Math.round(3 + Math.random() * 8) : Math.round(0 + Math.random() * 4);
-  const avgSpeed = rush ? Math.round(18 + Math.random() * 12) : Math.round(28 + Math.random() * 18);
-  const travelMin = Math.round((roadKm / avgSpeed) * 60) + delay;
-
-  // Traffic level 0–100
-  const trafficPct = rush
-    ? Math.round(55 + Math.random() * 35)
-    : Math.round(15 + Math.random() * 40);
-
-  // ETA
-  const base = new Date(`${dateStr}T${timeStr || '00:00'}`);
-  base.setMinutes(base.getMinutes() + travelMin);
-  const eta  = base.toTimeString().slice(0,5);
-
-  // CO2 (petrol car ~120g/km average London)
-  const co2  = Math.round(110 + Math.random() * 30);
-
-  // Route waypoints (road names)
-  const roads = pickRoads(o, d);
-
-  return { roadKm, travelMin, delay, avgSpeed, trafficPct, eta, co2, roads };
-}
-
-const ROAD_NAMES = [
-  "A1 Rd", "A2 Rd", "A4 Rd", "A10 Rd", "A12 Rd", "A13 Rd", "A20 Rd",
-  "A23 Rd", "A40 Rd", "A41 Rd", "Euston Rd", "City Rd", "Old St",
-  "Commercial Rd", "Mile End Rd", "Victoria Embankment", "Embankment",
-  "Borough High St", "London Bridge", "Upper Thames St", "Lower Thames St",
-  "Blackfriars Rd", "Walworth Rd", "Streatham High Rd", "Brixton Rd",
-  "Clapham High St", "Vauxhall Bridge Rd", "Grosvenor Rd", "Chelsea Bridge Rd",
-  "King's Rd", "Cromwell Rd", "Kensington High St", "Bayswater Rd",
-  "Edgware Rd", "Marylebone Rd", "Pentonville Rd", "Caledonian Rd",
-  "Holloway Rd", "Seven Sisters Rd", "Tottenham High Rd", "Cambridge Heath Rd",
-  "Bethnal Green Rd", "Bow Rd", "Stratford High St", "Romford Rd",
-];
-
-function pickRoads(o, d) {
-  // Deterministic-ish: use coords to seed order
-  const seed   = Math.abs(Math.round((o.lat + d.lon) * 1000)) % ROAD_NAMES.length;
-  const count  = 3 + (seed % 3); // 3–5 roads
-  const picked = [];
-  for (let i = 0; i < count; i++) {
-    picked.push(ROAD_NAMES[(seed + i * 7) % ROAD_NAMES.length]);
-  }
-  return picked;
+  const s    = Math.sin(dLat / 2) ** 2
+    + Math.cos(a.lat * Math.PI / 180) * Math.cos(b.lat * Math.PI / 180)
+    * Math.sin(dLon / 2) ** 2;
+  return R * 2 * Math.atan2(Math.sqrt(s), Math.sqrt(1 - s));
 }
 
 // ═══════════════════════════════════════════════════
@@ -405,7 +322,7 @@ const ROUTE_COLORS = [
 // ═══════════════════════════════════════════════════
 //  MAP LAYER STATE
 // ═══════════════════════════════════════════════════
-routePolyline = null;
+// routePolyline is declared above with `let`; allRouteLayers tracks all drawn pairs
 let allRouteLayers = [];   // { glow, line } pairs for every drawn route
 let activeRouteIdx = 0;    // which route card / polyline is "selected"
 

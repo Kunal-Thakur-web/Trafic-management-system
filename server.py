@@ -3,14 +3,7 @@ server.py — Flask backend for London Traffic Route Planner
 
 Endpoints:
   POST /score_routes   ← MAIN endpoint
-    Receives up to 3 OSRM candidate routes (real road geometry + distance/duration).
-    Runs the ML model on each route's actual road coordinates to predict vehicle
-    counts at ~10 sampled points along every route.
-    Scores each route as:
-        score = travel_time_with_traffic  (lower = better)
-    Returns all routes ranked, best route first.
-
-  POST /predict        ← single-point helper (kept for debugging)
+  POST /predict        ← single-point helper (for debugging)
 """
 
 from flask import Flask, request, jsonify
@@ -18,8 +11,7 @@ from flask_cors import CORS
 import joblib
 import numpy as np
 import os
-import math
-from datetime import datetime, timedelta
+from datetime import datetime
 
 app = Flask(__name__)
 CORS(app)
@@ -39,10 +31,17 @@ except FileNotFoundError:
 # ─── Core ML helpers ──────────────────────────────────────────────────────────
 
 def predict_vehicles(lat, lon, hour, day, month, weekday):
-    """Predict vehicle count at a single road coordinate."""
+    """Predict vehicle count at a single road coordinate.
+    
+    FIX: feature order must exactly match what model.py trained on:
+         ['latitude', 'longitude', 'hour', 'day', 'month', 'weekday']
+    """
     if model is not None:
+        # FIX 1: was passing year=0 implicitly in old code by having a year
+        # feature in some versions — now locked to 6 features matching model.py
         X = np.array([[lat, lon, hour, day, month, weekday]])
         return float(model.predict(X)[0])
+
     # Heuristic fallback — deterministic so different routes get different scores
     rush = (7 <= hour <= 9) or (17 <= hour <= 19)
     base = 1800 if rush else 900
@@ -71,17 +70,7 @@ def sample_route_coords(coordinates, n_samples=10):
 
 
 def score_route(coordinates, distance_m, hour, day, month, weekday):
-    """
-    Score one OSRM route using ML traffic predictions on its actual geometry.
-
-    Traffic-aware travel time:
-      - Sample 10 real road points spread evenly along the route
-      - ML predicts vehicle count at each point
-      - Average vehicle counts → traffic_pct (0-100)
-      - Effective speed = 45 - (45-8) * traffic_pct/100  (free-flow to gridlock)
-      - travel_min = (km / effective_speed) * 60  +  stop-start delay
-      - score = travel_min  (lower = better — this is what the selection is based on)
-    """
+    """Score one OSRM route using ML traffic predictions on its actual geometry."""
     road_km = round(distance_m / 1000.0, 2)
 
     sampled = sample_route_coords(coordinates, n_samples=10)
@@ -94,13 +83,11 @@ def score_route(coordinates, distance_m, hour, day, month, weekday):
     avg_vehicles = float(np.mean(preds))
     traffic_pct  = vehicles_to_traffic_pct(avg_vehicles)
 
-    # Speed degrades linearly with congestion: 45 km/h → 8 km/h
     free_flow  = 45.0
     min_speed  = 8.0
     eff_speed  = max(min_speed, free_flow - (free_flow - min_speed) * (traffic_pct / 100.0))
 
     base_min   = (road_km / eff_speed) * 60.0
-    # Stop-start penalty: up to 40% of base time added at full congestion
     delay      = round(base_min * (traffic_pct / 100.0) * 0.40)
     travel_min = round(base_min) + delay
     co2        = round(110 + (traffic_pct / 100.0) * 40)
@@ -113,7 +100,7 @@ def score_route(coordinates, distance_m, hour, day, month, weekday):
         'trafficPct': round(traffic_pct, 1),
         'co2':        co2,
         'vehicles':   round(avg_vehicles, 1),
-        'score':      travel_min,   # ← the key selection criterion
+        'score':      travel_min,
     }
 
 
@@ -139,43 +126,6 @@ def predict():
 
 @app.route('/score_routes', methods=['POST'])
 def score_routes_endpoint():
-    """
-    Request body:
-    {
-      "datetime": "YYYY-MM-DDTHH:MM",
-      "routes": [
-        {
-          "index":       0,
-          "distance_m":  12500,
-          "duration_s":  920,
-          "coordinates": [[lon, lat], ...],   ← full GeoJSON geometry from OSRM
-          "roads":       ["Euston Rd", ...]   ← step names from OSRM
-        },
-        ...up to 3
-      ]
-    }
-
-    Response:
-    {
-      "ranked": [
-        {
-          "osrm_index": 0,       ← original OSRM route index
-          "rank":       1,       ← 1 = best (lowest traffic-weighted travel time)
-          "roadKm":     12.5,
-          "travelMin":  28,
-          "delay":      4,
-          "avgSpeed":   28,
-          "trafficPct": 42.1,
-          "co2":        127,
-          "vehicles":   1348,
-          "score":      28,
-          "roads":      [...],
-          "coordinates": [[lon,lat], ...]
-        },
-        ...sorted best-first
-      ]
-    }
-    """
     data = request.get_json(force=True)
 
     try:
@@ -192,12 +142,22 @@ def score_routes_endpoint():
     month   = dt.month
     weekday = dt.weekday()
 
+    # FIX 2: year was extracted from datetime but never passed to score_route /
+    #         predict_vehicles — and model.py was NOT trained with year either
+    #         (it caused a feature-count mismatch on some versions).
+    #         year is now consistently excluded from both training and inference.
+
     scored = []
     for r in routes:
         coords     = r.get('coordinates', [])
         distance_m = float(r.get('distance_m', 0))
         roads      = r.get('roads', [])
         osrm_index = int(r.get('index', 0))
+
+        # FIX 3: guard against empty coordinate lists — skip silently instead
+        #         of letting score_route return None and crashing the sort below
+        if not coords:
+            continue
 
         stats = score_route(coords, distance_m, hour, day, month, weekday)
         if stats is None:
@@ -211,7 +171,6 @@ def score_routes_endpoint():
     if not scored:
         return jsonify({'error': 'Could not score any route'}), 500
 
-    # Sort ascending by score — best (lowest travel time) first
     scored.sort(key=lambda x: x['score'])
     for i, s in enumerate(scored):
         s['rank'] = i + 1
