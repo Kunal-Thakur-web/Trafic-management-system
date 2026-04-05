@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>London Traffic — Route Planner</title>
+
+<!-- Leaflet (free, no API key needed) -->
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+<!-- Fonts -->
+<link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@300;400;500&family=Syne:wght@400;600;700;800&family=DM+Sans:ital,wght@0,300;0,400;0,500;1,400&display=swap" rel="stylesheet" />
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+<!-- HEADER -->
+<header>
+  <div class="brand">
+    <div class="brand-icon">🗺</div>
+    <div class="brand-name">London <span>Traffic</span></div>
+  </div>
+  <div class="hsep"></div>
+  <span class="htag">Route Planner</span>
+  <div class="header-right">
+    <div class="live-badge"><div class="live-dot"></div>OpenStreetMap</div>
+    <span class="mock-badge">⚗ Mock Mode</span>
+  </div>
+</header>
+
+<!-- MAP -->
+<div id="map"></div>
+
+<!-- SIDE PANEL -->
+<div id="panel">
+
+  <!-- Journey section -->
+  <div class="psec">
+    <div class="sec-title">Plan Journey</div>
+
+    <div class="loc-stack">
+      <!-- Origin -->
+      <div class="loc-wrap">
+        <div class="loc-field">
+          <div class="loc-dot o"></div>
+          <input id="inp-o" type="text" placeholder="From — e.g. King's Cross"
+            autocomplete="off"
+            oninput="suggest(this,'sugs-o')"
+            onfocus="suggest(this,'sugs-o')" />
+        </div>
+        <div class="sugs" id="sugs-o"></div>
+      </div>
+
+      <div class="connector">⋮</div>
+
+      <!-- Destination -->
+      <div class="loc-wrap">
+        <div class="loc-field">
+          <div class="loc-dot d"></div>
+          <input id="inp-d" type="text" placeholder="To — e.g. Canary Wharf"
+            autocomplete="off"
+            oninput="suggest(this,'sugs-d')"
+            onfocus="suggest(this,'sugs-d')" />
+        </div>
+        <div class="sugs" id="sugs-d"></div>
+      </div>
+    </div>
+
+    <!-- Date / Time -->
+    <div class="dt-row">
+      <div class="dt-col">
+        <div class="dt-lbl">Date</div>
+        <input type="date" id="dt-date" />
+      </div>
+      <div class="dt-col">
+        <div class="dt-lbl">Time</div>
+        <input type="time" id="dt-time" />
+      </div>
+    </div>
+
+    <button class="btn-go" id="go-btn" onclick="findRoute()">
+      <span id="go-icon">→</span>
+      <span id="go-txt">Find Shortest Route</span>
+      <div class="spin" id="go-spin"></div>
+    </button>
+
+    <button class="btn-clr" id="clr-btn" onclick="clearAll()">✕ Clear Route</button>
+  </div>
+
+  <!-- Result -->
+  <div class="psec" id="res-sec">
+    <div class="sec-title">Route Result</div>
+    <div class="res-card">
+      <div class="res-top">
+        <span class="res-title">Shortest Path Found</span>
+        <span class="res-badge" id="r-badge">OPTIMAL</span>
+      </div>
+      <div class="res-stats">
+        <div class="rs hl">
+          <div class="v" id="r-time">--</div>
+          <div class="u">Minutes</div>
+        </div>
+        <div class="rs">
+          <div class="v" id="r-dist">--</div>
+          <div class="u">km</div>
+        </div>
+        <div class="rs">
+          <div class="v" id="r-delay">--</div>
+          <div class="u">Delay min</div>
+        </div>
+      </div>
+      <div class="res-steps">
+        <div class="step-lbl">Route Summary</div>
+        <div id="steps"></div>
+        <div class="tbar-wrap">
+          <div class="tbar-top">
+            <span>Free</span>
+            <span id="tlbl">Traffic</span>
+            <span>Heavy</span>
+          </div>
+          <div class="tbar"><div class="tptr" id="tptr" style="left:25%"></div></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Extra info row -->
+    <div class="info-row">
+      <div class="info-chip">
+        <div class="ic-val" id="r-speed">--</div>
+        <div class="ic-lbl">Avg Speed</div>
+      </div>
+      <div class="info-chip">
+        <div class="ic-val" id="r-co2">--</div>
+        <div class="ic-lbl">CO₂ (g/km)</div>
+      </div>
+      <div class="info-chip">
+        <div class="ic-val" id="r-eta">--</div>
+        <div class="ic-lbl">ETA</div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<!-- TOAST -->
+<div id="toast"><span id="toast-msg"></span></div>
+
+<script src="../src/index.js"></script>
+</body>
+</html>
